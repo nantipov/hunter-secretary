@@ -195,6 +195,9 @@ public class GmailService {
         if (messagePart.getMimeType().equalsIgnoreCase("text/plain")) {
             builder.append(new String(messagePart.getBody().decodeData()));
         }
+        if (messagePart.getMimeType().equalsIgnoreCase("text/html")) {
+            builder.append(Utils.extractTextFromHTML(new String(messagePart.getBody().decodeData())));
+        }
         if (messagePart.getParts() != null && !messagePart.getParts().isEmpty()) {
             messagePart.getParts().forEach(part -> concatTextParts(builder, part));
         }

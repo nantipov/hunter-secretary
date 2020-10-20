@@ -3,6 +3,8 @@ package org.nantipov.huntersecretary.services;
 import com.github.pemistahl.lingua.api.Language;
 import com.github.pemistahl.lingua.api.LanguageDetector;
 import com.github.pemistahl.lingua.api.LanguageDetectorBuilder;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Element;
 import org.nantipov.huntersecretary.domain.responsecomponent.ResponseLanguage;
 import org.springframework.ui.Model;
 
@@ -42,5 +44,20 @@ public class Utils {
             default:
                 return ResponseLanguage.ENGLISH;
         }
+    }
+
+    public static String extractTextFromHTML(String htmlText) {
+        var doc = Jsoup.parse(htmlText);
+        var builder = new StringBuilder();
+        var body = doc.body();
+        appendTextFromHtml(builder, body != null ? body : doc);
+        return builder.toString();
+    }
+
+    private static void appendTextFromHtml(StringBuilder stringBuilder, Element htmlElement) {
+        stringBuilder.append("\n")
+                     .append(htmlElement.text());
+        htmlElement.children()
+                   .forEach(element -> appendTextFromHtml(stringBuilder, element));
     }
 }

@@ -33,6 +33,7 @@ dependencies {
     implementation("com.github.pemistahl:lingua:1.0.2")
     implementation("com.sun.mail:javax.mail:1.6.2")
     implementation("com.atlassian.commonmark:commonmark:0.15.2")
+    implementation("org.jsoup:jsoup:1.13.1")
 
     implementation("org.flywaydb:flyway-core")
     implementation("com.h2database:h2")
