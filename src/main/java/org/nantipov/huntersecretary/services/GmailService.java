@@ -264,7 +264,7 @@ public class GmailService {
                                .map(list -> list.get(0))
                                .orElse("");
 
-            var replyTo = Optional.ofNullable(headers.get("in-reply-to"))
+            var replyTo = Optional.ofNullable(headers.get(" reply-to"))
                                   .map(list -> list.get(0))
                                   .orElse(null);
 
