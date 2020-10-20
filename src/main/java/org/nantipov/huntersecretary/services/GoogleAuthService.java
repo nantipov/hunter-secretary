@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.StreamSupport;
 import javax.annotation.PostConstruct;
 
 import static com.google.common.base.Strings.isNullOrEmpty;
@@ -62,19 +63,14 @@ public class GoogleAuthService {
         this.googleClientSecrets = GoogleClientSecrets.load(jsonFactory, Files.newBufferedReader(clientSecretFile));
     }
 
-    public void applyAuthCode(String authCode) {
-        taskExecutor.execute(() -> obtainTokenByAuthCode(authCode));
+    @PostConstruct
+    public void loadSavedTokens() {
+        loadPreSavedToken();
+        scheduleTokensRefresh();
     }
 
-    @PostConstruct
-    public void loadPresavedToken() {
-        try {
-            var reader = Files.newBufferedReader(Paths.get("token-response.json"));
-            var tokenResponse = jsonFactory.fromReader(reader, TokenResponse.class);
-            storeToken(tokenResponse, LocalDateTime.now().plus(10, ChronoUnit.MINUTES));
-        } catch (IOException e) {
-            log.warn("Could not load pre-saved token");
-        }
+    public void applyAuthCode(String authCode) {
+        taskExecutor.execute(() -> obtainTokenByAuthCode(authCode));
     }
 
     private void obtainTokenByAuthCode(String authCode) {
@@ -99,12 +95,7 @@ public class GoogleAuthService {
                        LocalDateTime.now().plus(tokenResponse.getExpiresInSeconds(), ChronoUnit.SECONDS)
             );
             if (!isNullOrEmpty(tokenResponse.getRefreshToken())) {
-                taskScheduler.schedule(
-                        () -> refreshToken(tokenResponse.getRefreshToken()),
-                        Instant.now()
-                               .plus(tokenResponse.getExpiresInSeconds(), ChronoUnit.SECONDS)
-                               .minus(2, ChronoUnit.MINUTES)
-                );
+                scheduleRefresh(tokenResponse);
             }
         } catch (IOException e) {
             log.error("Could not retrieve Google token", e);
@@ -142,6 +133,7 @@ public class GoogleAuthService {
                 scopesConfiguration.getScopes()
         );
         url.setAccessType("offline");
+        url.set("prompt", "consent");
         return url.toString();
     }
 
@@ -161,6 +153,32 @@ public class GoogleAuthService {
         } catch (IOException e) {
             throw new IllegalArgumentException("Could not parse token response string", e);
         }
+    }
+
+    private void loadPreSavedToken() {
+        try {
+            var reader = Files.newBufferedReader(Paths.get("token-response.json"));
+            var tokenResponse = jsonFactory.fromReader(reader, TokenResponse.class);
+            storeToken(tokenResponse, LocalDateTime.now().plus(10, ChronoUnit.MINUTES));
+        } catch (IOException e) {
+            log.warn("Could not load pre-saved token");
+        }
+    }
+
+    private void scheduleTokensRefresh() {
+        StreamSupport.stream(registeredUserRepository.findAll().spliterator(), false)
+                     .map(RegisteredUser::getTokenResponse)
+                     .map(this::getTokenResponse)
+                     .filter(token -> !isNullOrEmpty(token.getRefreshToken()))
+                     .forEach(this::scheduleRefresh);
+    }
+
+    private void scheduleRefresh(TokenResponse tokenResponse) {
+        var scheduleAt = Instant.now()
+                                .plus(tokenResponse.getExpiresInSeconds(), ChronoUnit.SECONDS)
+                                .minus(2, ChronoUnit.MINUTES);
+        log.debug("Schedule token refresh at {}", scheduleAt.toString());
+        taskScheduler.schedule(() -> refreshToken(tokenResponse.getRefreshToken()), scheduleAt);
     }
 
     @Data
