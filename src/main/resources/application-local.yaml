@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:hunter_secretary
+    username: sa
+    password: sa
+logging:
+  level:
+    org.nantipov: debug
+
+hunter-secretary:
+  scanner:
+    period: "PT1M"

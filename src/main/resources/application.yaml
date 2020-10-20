@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: hunter-secretary
+  freemarker:
+    template-loader-path: classpath:/templates
+    suffix: .ftl
+
+hunter-secretary:
+  google:
+    scopes:
+      - "https://www.googleapis.com/auth/userinfo.email"
+      - "https://www.googleapis.com/auth/userinfo.profile"
+      - "openid"
+      - "https://www.googleapis.com/auth/calendar.events"
+      - "https://www.googleapis.com/auth/gmail.modify"
+      - "https://www.googleapis.com/auth/gmail.send"
+      - "https://www.googleapis.com/auth/gmail.labels"
+    client-secret-file: ${CLIENT_SECRET_FILE}
+    gmail:
+      draft-mode: ${GMAIL_DRAFT_MODE:false}
+      labels:
+        done: "hs:done"
+        quick-thankyou: "hs:thanks"
+        reply-later: "hs:later"
+  scanner:
+    period: "${SCANNER_PERIOD:PT10M}"
+

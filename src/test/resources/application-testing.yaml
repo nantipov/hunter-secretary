@@ -1,0 +1,3 @@
+hunter-secretary:
+  google:
+    client-secret-file: "classpath:client_secret-test.json"
