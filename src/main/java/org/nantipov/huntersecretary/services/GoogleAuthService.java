@@ -33,7 +33,6 @@ import java.util.stream.StreamSupport;
 import javax.annotation.PostConstruct;
 
 import static com.google.common.base.Strings.isNullOrEmpty;
-import static java.util.Objects.nonNull;
 
 @Slf4j
 @Service
@@ -92,19 +91,16 @@ public class GoogleAuthService {
         try {
             log.debug("Retrieving Google token");
             var tokenResponse = request.execute();
-            var expiresIn = ZonedDateTime.now()
+            var expiresAt = ZonedDateTime.now()
                                          .plus(tokenResponse.getExpiresInSeconds(), ChronoUnit.SECONDS)
                                          .minus(2, ChronoUnit.MINUTES);
-            storeToken(tokenResponse, expiresIn);
-            if (tokenResponse.getRefreshToken() != null) {
-                scheduleRefresh(tokenResponse.getRefreshToken(), expiresIn);
-            }
+            storeToken(tokenResponse, expiresAt);
         } catch (IOException e) {
             log.error("Could not retrieve Google token", e);
         }
     }
 
-    private void storeToken(TokenResponse tokenResponse, ZonedDateTime expiresIn) {
+    private void storeToken(TokenResponse tokenResponse, ZonedDateTime expiresAt) {
         log.debug("Token {}", tokenResponse);
         var idToken = tokenResponse.get("id_token");
         if (idToken == null) {
@@ -123,12 +119,15 @@ public class GoogleAuthService {
                                         .orElseGet(RegisteredUser::new);
         user.setEmailAddress(email);
         user.setTokenResponse(tokenResponse.toString());
-        user.setExpiresIn(expiresIn);
-        if (nonNull(tokenResponse.getRefreshToken())) {
+        user.setExpiresIn(expiresAt); //TODO: rename to expires_at
+        if (!isNullOrEmpty(tokenResponse.getRefreshToken())) {
             user.setRefreshToken(tokenResponse.getRefreshToken());
         }
         user = registeredUserRepository.save(user);
         log.debug("User {}", user);
+        if (!isNullOrEmpty(user.getRefreshToken())) {
+            scheduleRefresh(user.getRefreshToken(), expiresAt);
+        }
     }
 
     public String getGoogleAuthURL() {
@@ -176,9 +175,9 @@ public class GoogleAuthService {
                      .forEach(user -> scheduleRefresh(user.getRefreshToken(), user.getExpiresIn()));
     }
 
-    private void scheduleRefresh(String refreshToken, ZonedDateTime expiresIn) {
-        var scheduleAt = expiresIn.isAfter(ZonedDateTime.now()) ? expiresIn.toInstant() : Instant.now();
-        log.debug("Schedule token refresh at {}", scheduleAt.toString());
+    private void scheduleRefresh(String refreshToken, ZonedDateTime expiresAt) {
+        var scheduleAt = expiresAt.isAfter(ZonedDateTime.now()) ? expiresAt.toInstant() : Instant.now();
+        log.debug("Scheduled token refresh at {}", scheduleAt.toString());
         taskScheduler.schedule(() -> refreshToken(refreshToken), scheduleAt);
     }
 
