@@ -2,7 +2,7 @@ package org.nantipov.huntersecretary.domain.entiry;
 
 import lombok.Data;
 
-import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
@@ -23,5 +23,7 @@ public class RegisteredUser {
 
     private String tokenResponse;
 
-    private LocalDateTime expiresIn;
+    private String refreshToken;
+
+    private ZonedDateTime expiresIn;
 }

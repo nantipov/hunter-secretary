@@ -5,4 +5,4 @@
 </#list>
 
 
-Written by [Hunter-Secretary](https://github.com/nantipov/hunter-secretary) bot.
+Printed by [Hunter-Secretary](https://nantipov.org/2020/09/hunter-secretary/) bot.

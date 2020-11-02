@@ -25,7 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
-import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +33,7 @@ import java.util.stream.StreamSupport;
 import javax.annotation.PostConstruct;
 
 import static com.google.common.base.Strings.isNullOrEmpty;
+import static java.util.Objects.nonNull;
 
 @Slf4j
 @Service
@@ -91,18 +92,19 @@ public class GoogleAuthService {
         try {
             log.debug("Retrieving Google token");
             var tokenResponse = request.execute();
-            storeToken(tokenResponse,
-                       LocalDateTime.now().plus(tokenResponse.getExpiresInSeconds(), ChronoUnit.SECONDS)
-            );
-            if (!isNullOrEmpty(tokenResponse.getRefreshToken())) {
-                scheduleRefresh(tokenResponse);
+            var expiresIn = ZonedDateTime.now()
+                                         .plus(tokenResponse.getExpiresInSeconds(), ChronoUnit.SECONDS)
+                                         .minus(2, ChronoUnit.MINUTES);
+            storeToken(tokenResponse, expiresIn);
+            if (tokenResponse.getRefreshToken() != null) {
+                scheduleRefresh(tokenResponse.getRefreshToken(), expiresIn);
             }
         } catch (IOException e) {
             log.error("Could not retrieve Google token", e);
         }
     }
 
-    private void storeToken(TokenResponse tokenResponse, LocalDateTime expiresIn) {
+    private void storeToken(TokenResponse tokenResponse, ZonedDateTime expiresIn) {
         log.debug("Token {}", tokenResponse);
         var idToken = tokenResponse.get("id_token");
         if (idToken == null) {
@@ -122,6 +124,9 @@ public class GoogleAuthService {
         user.setEmailAddress(email);
         user.setTokenResponse(tokenResponse.toString());
         user.setExpiresIn(expiresIn);
+        if (nonNull(tokenResponse.getRefreshToken())) {
+            user.setRefreshToken(tokenResponse.getRefreshToken());
+        }
         user = registeredUserRepository.save(user);
         log.debug("User {}", user);
     }
@@ -159,7 +164,7 @@ public class GoogleAuthService {
         try {
             var reader = Files.newBufferedReader(Paths.get("token-response.json"));
             var tokenResponse = jsonFactory.fromReader(reader, TokenResponse.class);
-            storeToken(tokenResponse, LocalDateTime.now().plus(10, ChronoUnit.MINUTES));
+            storeToken(tokenResponse, ZonedDateTime.now().plus(10, ChronoUnit.MINUTES));
         } catch (IOException e) {
             log.warn("Could not load pre-saved token");
         }
@@ -167,18 +172,14 @@ public class GoogleAuthService {
 
     private void scheduleTokensRefresh() {
         StreamSupport.stream(registeredUserRepository.findAll().spliterator(), false)
-                     .map(RegisteredUser::getTokenResponse)
-                     .map(this::getTokenResponse)
-                     .filter(token -> !isNullOrEmpty(token.getRefreshToken()))
-                     .forEach(this::scheduleRefresh);
+                     .filter(user -> !isNullOrEmpty(user.getRefreshToken()))
+                     .forEach(user -> scheduleRefresh(user.getRefreshToken(), user.getExpiresIn()));
     }
 
-    private void scheduleRefresh(TokenResponse tokenResponse) {
-        var scheduleAt = Instant.now()
-                                .plus(tokenResponse.getExpiresInSeconds(), ChronoUnit.SECONDS)
-                                .minus(2, ChronoUnit.MINUTES);
+    private void scheduleRefresh(String refreshToken, ZonedDateTime expiresIn) {
+        var scheduleAt = expiresIn.isAfter(ZonedDateTime.now()) ? expiresIn.toInstant() : Instant.now();
         log.debug("Schedule token refresh at {}", scheduleAt.toString());
-        taskScheduler.schedule(() -> refreshToken(tokenResponse.getRefreshToken()), scheduleAt);
+        taskScheduler.schedule(() -> refreshToken(refreshToken), scheduleAt);
     }
 
     @Data

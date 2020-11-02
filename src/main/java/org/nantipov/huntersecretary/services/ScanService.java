@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.util.Objects;
 import java.util.stream.StreamSupport;
 
@@ -31,10 +31,11 @@ public class ScanService {
 
     @Scheduled(fixedDelayString = "${hunter-secretary.scanner.period}")
     public void scan() {
+        var now = ZonedDateTime.now();
         StreamSupport.stream(registeredUserRepository.findAll().spliterator(), false)
                      .filter(user ->
                                      Objects.nonNull(user.getTokenResponse()) &&
-                                     LocalDateTime.now().isBefore(user.getExpiresIn())
+                                     now.isBefore(user.getExpiresIn())
                      )
                      .map(RegisteredUser::getTokenResponse)
                      .map(googleAuthService::getTokenResponse)
