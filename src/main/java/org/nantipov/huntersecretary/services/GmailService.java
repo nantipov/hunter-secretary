@@ -18,9 +18,9 @@ import org.nantipov.huntersecretary.domain.Assigment;
 import org.nantipov.huntersecretary.domain.AssigmentSource;
 import org.nantipov.huntersecretary.domain.AssigmentType;
 import org.nantipov.huntersecretary.domain.AssignmentResponse;
+import org.nantipov.huntersecretary.domain.GmailSettings;
 import org.nantipov.huntersecretary.domain.ResponseType;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -31,6 +31,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -48,34 +49,26 @@ import javax.mail.internet.MimeMessage;
 public class GmailService {
 
     private static final String USER_ID = "me";
+    private static final String LABEL_NAME_THANKYOU = "quick-thankyou";
+    private static final String LABEL_NAME_DONE = "done";
+    private static final String LABEL_NAME_DRAFT = "draft";
 
     private final HttpTransport httpTransport;
     private final JsonFactory jsonFactory;
     private final SecretaryService secretaryService;
 
-    private final String labelQuickThankYou;
-    private final String labelReplyLater;
-    private final String labelDone;
-    private final boolean draftMode;
-
-    private final List<String> workLabelNames;
+    private final GmailSettings gmailSettings;
+    private final Collection<String> workLabelNames;
 
     @Autowired
     public GmailService(HttpTransport httpTransport, JsonFactory jsonFactory,
                         SecretaryService secretaryService,
-                        //TODO google properties
-                        @Value("${hunter-secretary.google.gmail.labels.quick-thankyou}") String labelQuickThankYou,
-                        @Value("${hunter-secretary.google.gmail.labels.reply-later}") String labelReplyLater,
-                        @Value("${hunter-secretary.google.gmail.labels.done}") String labelDone,
-                        @Value("${hunter-secretary.google.gmail.draft-mode}") boolean draftMode) {
+                        GmailSettings gmailSettings) {
         this.httpTransport = httpTransport;
         this.jsonFactory = jsonFactory;
         this.secretaryService = secretaryService;
-        this.labelQuickThankYou = labelQuickThankYou;
-        this.labelReplyLater = labelReplyLater;
-        this.labelDone = labelDone;
-        this.workLabelNames = List.of(labelQuickThankYou, labelReplyLater, labelDone);
-        this.draftMode = draftMode;
+        this.gmailSettings = gmailSettings;
+        this.workLabelNames = gmailSettings.getLabels().values();
     }
 
     public void processMail(String token) {
@@ -84,7 +77,7 @@ public class GmailService {
             var labelIdsByNames = ensureLabelsIds(gmail);
             labelIdsByNames.keySet()
                            .stream()
-                           .filter(name -> !name.equals(labelDone))
+                           .filter(name -> !name.equals(gmailSettings.getLabels().get(LABEL_NAME_DONE)))
                            .map(labelIdsByNames::get)
                            .map(labelId -> searchMessagesByLabelId(gmail, labelId))
                            .flatMap(List::stream)
@@ -175,8 +168,9 @@ public class GmailService {
         return new Assigment(
                 message.getId(),
                 AssigmentSource.GMAIL,
-                message.getLabelIds().contains(labelIdByNames.get(labelQuickThankYou)) ? AssigmentType.QUICK_THANK_YOU
-                                                                                       : AssigmentType.REPLY_LATER,
+                message.getLabelIds()
+                       .contains(labelIdByNames.get(gmailSettings.getLabels().get(LABEL_NAME_THANKYOU)))
+                ? AssigmentType.QUICK_THANK_YOU : AssigmentType.REPLY_LATER,
                 text,
                 language,
                 ResponseType.HTML, //TODO?
@@ -209,15 +203,17 @@ public class GmailService {
             var originMessage = getMessage(gmail, assignmentResponse.getAssigment().getMessageId()).orElseThrow();
             var newMessage = prepareMessage(assignmentResponse, originMessage);
 
-            if (!draftMode) {
-                gmail.users()
-                     .messages()
-                     .send(USER_ID, newMessage)
-                     .execute();
-            } else {
+            if (gmailSettings.isDraftMode() ||
+                originMessage.getLabelIds()
+                             .contains(labelIdsByNames.get(gmailSettings.getLabels().get(LABEL_NAME_DRAFT)))) {
                 gmail.users()
                      .drafts()
                      .create(USER_ID, new Draft().setMessage(newMessage))
+                     .execute();
+            } else {
+                gmail.users()
+                     .messages()
+                     .send(USER_ID, newMessage)
                      .execute();
             }
 
@@ -225,10 +221,10 @@ public class GmailService {
                     .setRemoveLabelIds(
                             labelIdsByNames.keySet()
                                            .stream()
-                                           .filter(name -> !name.equals(labelDone))
+                                           .filter(name -> !name.equals(gmailSettings.getLabels().get(LABEL_NAME_DONE)))
                                            .map(labelIdsByNames::get).collect(Collectors.toList())
                     )
-                    .setAddLabelIds(List.of(labelIdsByNames.get(labelDone)));
+                    .setAddLabelIds(List.of(labelIdsByNames.get(gmailSettings.getLabels().get(LABEL_NAME_DONE))));
             gmail.users()
                  .messages()
                  .modify(USER_ID, originMessage.getId(), labelsModifyRequest)

@@ -22,6 +22,7 @@ hunter-secretary:
         done: "hs:done"
         quick-thankyou: "hs:thanks"
         reply-later: "hs:later"
+        draft: "hs:draft"
   scanner:
     period: "${SCANNER_PERIOD:PT10M}"
 
